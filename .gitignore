@@ -1,0 +1,6 @@
+*.env
+*.keystore
+*.jks
+*.p8
+*.p12
+*.bak*
