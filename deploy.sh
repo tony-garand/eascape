@@ -8,7 +8,7 @@ set -euo pipefail
 # Usage: ./deploy.sh [project-dir] [--ios | --android | --both]
 #
 # Interactive CLI — prompts for anything it needs, caches answers in
-# ~/.config/expo-deploy/<project-slug>.env for next time.
+# ~/.config/eascape/<project-slug>.env for next time.
 #
 # =============================================================================
 
@@ -24,7 +24,7 @@ warn()  { echo -e "${YELLOW}==> $1${NC}"; }
 error() { echo -e "${RED}==> $1${NC}"; exit 1; }
 ask()   { echo -en "${CYAN}?${NC} ${BOLD}$1${NC} "; }
 
-CONFIG_DIR="$HOME/.config/expo-deploy"
+CONFIG_DIR="$HOME/.config/eascape"
 mkdir -p "$CONFIG_DIR"
 
 # =============================================================================

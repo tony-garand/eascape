@@ -1,6 +1,7 @@
-# expo-deploy
+# eascape
 
-Local build & deploy for Expo apps — a self-hosted replacement for EAS Build/Submit.
+**Escape EAS.** Local build & deploy for Expo apps — a self-hosted replacement for
+EAS Build/Submit. Your machine, your toolchain, your signing keys.
 
 Builds happen on your machine with your own toolchain and signing keys; nothing
 touches Expo's servers. One script, both stores.
@@ -14,7 +15,7 @@ touches Expo's servers. One script, both stores.
 ```
 
 Interactive on first run; answers are cached per app in
-`~/.config/expo-deploy/<slug>.env` (chmod 600, never committed).
+`~/.config/eascape/<slug>.env` (chmod 600, never committed).
 
 ## What it does
 
@@ -42,7 +43,7 @@ macOS with: Xcode, `brew install openjdk@17 fastlane`,
 Node for `npx expo`. Android needs a Play service-account JSON and your upload
 keystore; iOS needs an ASC API key.
 
-## Per-app config (`~/.config/expo-deploy/<slug>.env`)
+## Per-app config (`~/.config/eascape/<slug>.env`)
 
 ```
 APPLE_TEAM_ID / ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_PATH
