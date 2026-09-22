@@ -297,6 +297,9 @@ print(match)
 PLIST
 
   log "Exporting IPA..."
+  # Start from an empty export dir: a stale IPA from a previous app/scheme in
+  # here was once uploaded in place of the one just built.
+  rm -rf "$BUILD_DIR/export"
   xcodebuild -exportArchive \
     -archivePath "$BUILD_DIR/app.xcarchive" \
     -exportPath "$BUILD_DIR/export" \
@@ -304,10 +307,9 @@ PLIST
     -allowProvisioningUpdates \
     -quiet
 
-  local IPA
-  IPA=$(find "$BUILD_DIR/export" -name "*.ipa" | head -1)
-  if [[ -z "$IPA" ]]; then
-    error "No IPA found after export"
+  local IPA="$BUILD_DIR/export/$SCHEME.ipa"
+  if [[ ! -f "$IPA" ]]; then
+    error "Expected $IPA after export; found: $(find "$BUILD_DIR/export" -name '*.ipa' | tr '\n' ' ')"
   fi
 
   # Install API key where altool/notarytool expects it
@@ -315,12 +317,15 @@ PLIST
   mkdir -p "$API_KEY_DIR"
   cp "$ASC_KEY_PATH" "$API_KEY_DIR/AuthKey_${ASC_KEY_ID}.p8" 2>/dev/null || true
 
-  log "Uploading to App Store Connect..."
-  if xcrun altool --upload-app \
+  log "Uploading $(basename "$IPA") to App Store Connect..."
+  # altool can exit 0 while printing an ERROR, so key off its output instead.
+  local ALTOOL_OUT
+  ALTOOL_OUT=$(xcrun altool --upload-app \
     -f "$IPA" \
     -t ios \
     --apiKey "$ASC_KEY_ID" \
-    --apiIssuer "$ASC_ISSUER_ID"; then
+    --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee /dev/stderr)
+  if grep -q "UPLOAD SUCCEEDED" <<< "$ALTOOL_OUT" && ! grep -q "ERROR" <<< "$ALTOOL_OUT"; then
     log "iOS build uploaded to App Store Connect!"
     echo "  Go to https://appstoreconnect.apple.com to submit for review."
   else
@@ -469,8 +474,7 @@ for track in ("internal", "alpha", "beta", "production"):
         for code in release.get("versionCodes") or []:
             highest = max(highest, int(code))
 
-if highest == 0:
-    sys.exit("could not determine any existing versionCode from Play")
+# A brand-new Play app has no bundles and no releases yet; start at 1.
 print(highest + 1)
 VERSIONEOF
 }
