@@ -271,6 +271,21 @@ print(match)
     error "Could not determine Xcode scheme"
   fi
 
+  # No Apple ID signed into Xcode on this Mac: let xcodebuild sign
+  # automatically through the App Store Connect API key instead. (Not keyed on
+  # the keychain: the first such archive leaves an Apple Development identity
+  # behind, and the export still needs the key.)
+  local AUTH_ARGS=()
+  local xcode_accounts
+  xcode_accounts=$(defaults read com.apple.dt.Xcode DVTDeveloperAccountManagerAppleIDLists 2>/dev/null | grep -c username || true)
+  if [[ "$xcode_accounts" -eq 0 ]]; then
+    AUTH_ARGS=(
+      -authenticationKeyPath "$ASC_KEY_PATH"
+      -authenticationKeyID "$ASC_KEY_ID"
+      -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+    )
+  fi
+
   log "Building archive (scheme: $SCHEME)..."
   xcodebuild archive \
     -workspace "$WORKSPACE" \
@@ -279,6 +294,7 @@ print(match)
     -archivePath "$BUILD_DIR/app.xcarchive" \
     -destination "generic/platform=iOS" \
     -allowProvisioningUpdates \
+    ${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"} \
     CODE_SIGN_STYLE=Automatic \
     DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
     -quiet
@@ -305,6 +321,7 @@ PLIST
     -exportPath "$BUILD_DIR/export" \
     -exportOptionsPlist "$BUILD_DIR/ExportOptions.plist" \
     -allowProvisioningUpdates \
+    ${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"} \
     -quiet
 
   local IPA="$BUILD_DIR/export/$SCHEME.ipa"
