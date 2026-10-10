@@ -395,10 +395,12 @@ ensure_android_toolchain() {
 # refuses to build when the keystore stops matching.
 verify_upload_key() {
   local FINGERPRINT
-  FINGERPRINT=$(keytool -list -v \
+  # The password goes through the environment (-storepass:env), never argv,
+  # where `ps` would show it to every user on the machine.
+  FINGERPRINT=$(ANDROID_KEYSTORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" keytool -list -v \
     -keystore "$ANDROID_KEYSTORE_PATH" \
     -alias "$ANDROID_KEY_ALIAS" \
-    -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null \
+    -storepass:env ANDROID_KEYSTORE_PASSWORD 2>/dev/null \
     | grep -m1 "SHA1:" | sed 's/.*SHA1: *//' | tr -d ' \r')
 
   [[ -n "$FINGERPRINT" ]] || error "Could not read the certificate from $ANDROID_KEYSTORE_PATH (wrong password or alias?)"
@@ -517,11 +519,11 @@ build_android() {
       ANDROID_KEY_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
 
       log "Generating keystore at $ANDROID_KEYSTORE_PATH..."
-      keytool -genkeypair -v -storetype PKCS12 \
+      ANDROID_KEYSTORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" keytool -genkeypair -v -storetype PKCS12 \
         -keystore "$ANDROID_KEYSTORE_PATH" \
         -alias "$ANDROID_KEY_ALIAS" \
         -keyalg RSA -keysize 2048 -validity 10000 \
-        -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+        -storepass:env ANDROID_KEYSTORE_PASSWORD \
         -dname "CN=$APP_NAME"
 
       save_config ANDROID_KEYSTORE_PATH "$ANDROID_KEYSTORE_PATH"
@@ -589,18 +591,9 @@ if count != 1:
 open(path, "w").write(patched)
 STAMPEOF
 
-  # Inject signing config
-  local GRADLE_PROPS="android/gradle.properties"
-  if ! grep -q "RELEASE_STORE_FILE" "$GRADLE_PROPS" 2>/dev/null; then
-    log "Configuring release signing..."
-    cat >> "$GRADLE_PROPS" << EOF
-
-RELEASE_STORE_FILE=$ANDROID_KEYSTORE_PATH
-RELEASE_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
-RELEASE_KEY_ALIAS=$ANDROID_KEY_ALIAS
-RELEASE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
-EOF
-  fi
+  # Inject signing config. The four RELEASE_* values reach Gradle as project
+  # properties through ORG_GRADLE_PROJECT_* on the gradlew call below, so the
+  # passwords are never written into android/gradle.properties.
 
   local BUILD_GRADLE="android/app/build.gradle"
   if ! grep -q "signingConfigs.release" "$BUILD_GRADLE" 2>/dev/null; then
@@ -646,7 +639,12 @@ PYEOF
   fi
 
   log "Building Android AAB (first run downloads Gradle deps; takes a while)..."
-  ( cd android && ./gradlew bundleRelease ) || error "Gradle build failed. See the output above."
+  ( cd android && \
+    ORG_GRADLE_PROJECT_RELEASE_STORE_FILE="$ANDROID_KEYSTORE_PATH" \
+    ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
+    ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS="$ANDROID_KEY_ALIAS" \
+    ORG_GRADLE_PROJECT_RELEASE_KEY_PASSWORD="$ANDROID_KEY_PASSWORD" \
+    ./gradlew bundleRelease ) || error "Gradle build failed. See the output above."
 
   local AAB="android/app/build/outputs/bundle/release/app-release.aab"
   if [[ ! -f "$AAB" ]]; then
