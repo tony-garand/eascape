@@ -20,7 +20,17 @@ Interactive on first run; answers are cached per app in
 ## What it does
 
 **iOS** — `expo prebuild` → `xcodebuild archive` → export IPA → `altool` upload
-to App Store Connect (App Store Connect API key auth).
+to App Store Connect (App Store Connect API key auth). Key behaviors:
+
+- **Pod deployment targets**: after prebuild, any CocoaPods target below the
+  app's own iOS deployment target is raised to it. Xcode 27 rejects targets
+  below iOS 15.0, and pod resource bundles (Google Mobile Ads, UMP,
+  AsyncStorage) still declare 12.0 / 13.4. Only `ios/Pods` is patched, which
+  every prebuild regenerates.
+- **Upload verdict**: `altool` retries transient network errors itself and can
+  log `ERROR` lines on the way to `UPLOAD SUCCEEDED`. When it does, the script
+  asks App Store Connect about the Delivery UUID (`altool --build-status`, up to
+  three minutes) instead of calling the upload failed.
 
 **Android** — `expo prebuild` → stamp versionCode → Gradle `bundleRelease` →
 fastlane `upload_to_play_store`. Key behaviors:
