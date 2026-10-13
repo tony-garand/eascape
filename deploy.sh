@@ -560,12 +560,37 @@ verify_upload_key() {
 # superseded still occupies its versionCode forever.
 next_version_code() {
   python3 - "$GOOGLE_SERVICE_ACCOUNT_KEY" "$ANDROID_PACKAGE" <<'VERSIONEOF'
-import base64, json, sys, time, urllib.parse, urllib.request
+import base64, json, sys, time, urllib.error, urllib.parse, urllib.request
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 key_path, package = sys.argv[1], sys.argv[2]
 key = json.load(open(key_path))
+
+# urlopen waits forever unless told otherwise. A connection to Google that
+# opened and then never answered once held a build at this step for ten
+# minutes, until the process was killed by hand (2026-10-13).
+TIMEOUT_SECONDS = 30
+
+
+def fetch(request, data=None):
+    """One request, as JSON. A request that gets no answer is tried once more.
+
+    An answer is never retried, a refusal included: HTTPError means Google
+    replied. Anything else that goes wrong on the wire (a timeout, a reset, a
+    failed lookup) is the transient kind, and a second connection usually
+    gets through.
+    """
+    for attempt in (1, 2):
+        try:
+            with urllib.request.urlopen(request, data, timeout=TIMEOUT_SECONDS) as response:
+                return json.load(response)
+        except urllib.error.HTTPError:
+            raise
+        except OSError as error:
+            if attempt == 2:
+                raise
+            print("  Play API did not answer (%s); trying once more..." % error, file=sys.stderr)
 
 
 def b64(raw):
@@ -587,13 +612,13 @@ signature = b64(
 )
 assertion = (header + b"." + claims + b"." + signature).decode()
 
-token = json.load(urllib.request.urlopen(
+token = fetch(
     "https://oauth2.googleapis.com/token",
     urllib.parse.urlencode({
         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
         "assertion": assertion,
     }).encode(),
-))["access_token"]
+)["access_token"]
 
 base = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/" + package
 
@@ -604,7 +629,7 @@ def api(path, method="GET"):
         method=method,
         headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
     )
-    return json.load(urllib.request.urlopen(request))
+    return fetch(request)
 
 
 edit = api("edits", method="POST")["id"]
@@ -614,9 +639,12 @@ for bundle in api("edits/%s/bundles" % edit).get("bundles") or []:
     highest = max(highest, int(bundle["versionCode"]))
 
 for track in ("internal", "alpha", "beta", "production"):
+    # A track Play refuses to describe has nothing to count. A track that
+    # could not be asked about is different: skipping it could hand back a
+    # versionCode that track already holds, so that failure stops the build.
     try:
         info = api("edits/%s/tracks/%s" % (edit, track))
-    except Exception:
+    except urllib.error.HTTPError:
         continue
     for release in info.get("releases") or []:
         for code in release.get("versionCodes") or []:

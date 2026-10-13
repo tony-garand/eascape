@@ -37,7 +37,9 @@ fastlane `upload_to_play_store`. Key behaviors:
 
 - **versionCode from the Play API**: max across uploaded bundles and all four
   tracks, +1. Self-healing — a failed build can never burn a number, and no
-  local/remote counter to drift.
+  local/remote counter to drift. Each request waits 30 seconds and is tried
+  once more if it gets no answer; a track that cannot be reached stops the
+  build rather than being left out of the count.
 - **Upload-key pinning**: set `ANDROID_UPLOAD_CERT_SHA1` in the app's env and
   the script refuses to build if the keystore's cert doesn't match — a wrong
   key otherwise means a Play rejection and a support-ticket recovery.
